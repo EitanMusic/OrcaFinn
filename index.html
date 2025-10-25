@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta charset="UTF-8" />
+<title>Orca Browser</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    font-family: "Segoe UI", Roboto, sans-serif;
+    background: #f5f5f5;
+    color: #202124;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+#tab-bar {
+    display: flex;
+    align-items: center;
+    background: #e8eaed;
+    padding: 0 6px;
+    height: 36px;
+    border-bottom: 1px solid #dadce0;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+.tab {
+    display: flex;
+    align-items: center;
+    background: #ffffff;
+    border-radius: 6px 6px 0 0;
+    margin-right: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+    position: relative;
+    font-size: 13px;
+}
+.tab.active { background: #e0e0e0; }
+.tab span.close {
+    font-weight: bold;
+    color: #5f6368;
+    margin-left: 8px;
+    font-size: 14px;
+    transition: color 0.2s;
+    cursor: pointer;
+}
+.tab span.close:hover { color: #d93025; }
+#new-tab {
+    background: none;
+    color: #5f6368;
+    font-size: 20px;
+    padding: 0 8px;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+#new-tab:hover { color: #202124; }
+#controls {
+    display: flex;
+    align-items: center;
+    background: #f1f3f4;
+    padding: 6px;
+    gap: 6px;
+    border-bottom: 1px solid #dadce0;
+}
+button.nav {
+    background: #ffffff;
+    border: 1px solid #dadce0;
+    color: #202124;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+button.nav:hover {
+    background: #e8eaed;
+    color: #202124;
+}
+#url {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 20px;
+    border: 1px solid #dadce0;
+    background: #ffffff;
+    color: #202124;
+    font-size: 14px;
+}
+#url:focus {
+    outline: none;
+    border-color: #4285f4;
+    background: #ffffff;
+}
+#content {
+    flex: 1;
+    position: relative;
+    background: #ffffff;
+}
+iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: none;
+    background: white;
+}
+iframe.active { display: block; }
+</style>
+</head>
+<body>
+
+<div id="tab-bar">
+  <button id="new-tab">+</button>
+</div>
+
+<div id="controls">
+  <button class="nav" id="back">⤌</button>
+  <button class="nav" id="forward">⤍</button>
+  <button class="nav" id="reload">⟳</button>
+  <input id="url" placeholder="Enter URL or orca://page">
+</div>
+
+<div id="content"></div>
+
+<script>
+const tabBar = document.getElementById('tab-bar');
+const urlInput = document.getElementById('url');
+const content = document.getElementById('content');
+const backBtn = document.getElementById('back');
+const forwardBtn = document.getElementById('forward');
+const reloadBtn = document.getElementById('reload');
+const newTabBtn = document.getElementById('new-tab');
+
+let tabs = [];
+let currentTab = null;
+let tabCounter = 0;
+
+const orcaPages = {
+  "welcome": `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Orca</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { display: flex; justify-content: center; align-items: center; background-color: #f0f0f0; }
+    img { max-width: 80%; max-height: 80%; }
+  </style>
+</head>
+<body>
+  <img src="data:image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHdpZHRoPSI3Ny45MzM5NyIgaGVpZ2h0PSI3Ny4wMjY4OSIgdmlld0JveD0iMCwwLDc3LjkzMzk3LDc3LjAyNjg5Ij48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtMjgxLjAzMzAyLC0xNDEuNDg2NTUpIj48ZyBzdHJva2Utd2lkdGg9IjAiIHN0cm9rZS1taXRlcmxpbWl0PSIxMCI+PHBhdGggZD0iTTM1Ni4wMzIzOSwxOTAuMjMwNzNjMCwwIDQuMjM3NTEsLTM3Ljg4NDY0IC0xMS40Mjg1NywtMzcuMmwzLjU5ODY2LC02LjI1MDg5bDQuNzE0MjksM2wzLjE0Mjg1LDUuNTcxNDNsMS4yODU3Miw3bDAuODU3MTQsNy41NzE0M2wtMC4yODU3MSw2LjcxNDI5bC0wLjE0Mjg2LDQuMTQyODV6IiBmaWxsPSIjOTBhM2JiIiBzdHJva2U9IiNmZjAwMDAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxwYXRoIGQ9Ik0yOTguNzAwMzQsMjA5LjczODA0YzMzLjE5NTM4LDEuMTQ3NjcgNDYuMTc1MTYsLTQxLjUyMjAzIDE5LjUsLTQ0LjI1bDI5LjI1LDMuNzVsMy43NSwyMWwtOS4yNSwxNi41bC0xMy41LDcuNWwtMTYsMS43NWwtMTMuNSwtNHoiIGZpbGw9IiM5MGEzYmIiIHN0cm9rZT0iIzAwMDAwMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PHBhdGggZD0iTTM0Mi45OTM5OCwyMDEuODEyMjZjMTMuNjY5OCwtMTcuMDY3MjEgLTYuODk5MTYsLTM3Ljg0MzYzIC0yNC45MTc5OSwtMzUuNDA0MzJjLTEuNjYxODcsMC4xOTEzNSAtNC4xMjMxLDAuNTQ4MzMgLTkuOTIyNTEsMy43MDM5NWMtOS4yMzAzNSw1LjY0MzE4IC0xNS40ODc3NywxNC41NzM4MSAtMTQuNTY4NDcsOC4zNzY4NGMwLjMxMDA0LC0yLjA4OTk2IDAuNTAyODksLTQuODQyMzYgMi4yNzE5OCwtNy40MTY3NWMxLjA2MjM2LC0xLjU0NTk1IC0xMC4wMTk4OCwtOC43NjIyOSAyLjAxNDQxLC0yMS43OTMxNGM1LjA2MTIzLC01LjQ4MDM0IDEwLjI3OTk5LC02LjgxMzEzIDE1LjA0OTk3LC03LjUwNDQxYzkuNjM4ODIsLTEuMzk2OSAxNi40NDUwNSwyLjc2NjE1IDE3LjQxNTYxLDIuMzQ3ODRjMTAuMDcwNTQsLTYuMTc4MDcgMTkuMDE5NzEsMC42ODI2NiAyMi41NTQ0NSw0LjE1OWMxLjAwOTM3LDAuOTkyNjkgMTAuOTk0MzMsMTIuNDc5MSAyLjk5MjUsNDIuMzIzM2MtMC4xODgzLDAuNzAyMyA0Ljk1NjMyLC0yNi42OTI4NyAtMi44NjE2OCwtMzguOTQwNDljLTQuNzM5MjQsLTcuNDI0NDcgLTcuOTM4MDksMS4yODcwNCAtNy41OTE0MywxLjczNDczYzUuMzY4MjYsNi45MzI3NyA5Ljg5NjUxLDE1LjMwMDAyIDkuODk2NTEsMjQuNzQ2OGMwLDIyLjY0MzY4IC0xNy4wNDg1MiwzOS4yNTg1NiAtMzkuNjY2NjcsNDAuMzMzMzNjLTIxLjA0NDY1LDEgLTM0LjYyNzY0LC0yMC4wNjggLTM0LjYyNzY0LC0yMC4wNjhjMCwwIDM5LjgwNzAzLDMxLjA2MTMgNjEuOTYwOTgsMy40MDEzNHoiIGZpbGw9IiMwMzBhMWYiIHN0cm9rZT0iIzAwMDAwMCIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNMzExLjE0MTM1LDE1OS42ODcyOGMwLjYxODQ5LDAuODMwNTQgLTAuODk5OTksMy4wMDc5OCAtMy4zOTE2Miw0Ljg2MzQ1Yy0yLjQ5MTYzLDEuODU1NDcgLTUuMDEyODgsMi42ODYzMyAtNS42MzEzNywxLjg1NTc5Yy0wLjYxODQ5LC0wLjgzMDU0IDAuODk5OTksLTMuMDA3OTggMy4zOTE2MiwtNC44NjM0NWMyLjQ5MTYzLC0xLjg1NTQ3IDUuMDEyODgsLTIuNjg2MzMgNS42MzEzNywtMS44NTU3OXoiIGZpbGw9IiM5MGEzYmIiIHN0cm9rZT0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNMzE4LjA3NTk5LDE2Ni40MDc5M2MtMS4wMzQ4MywwLjExOTE1IC0yLjM3OTU5LDAuMzAyNTIgLTQuNjQ3MjgsMS4xODU4M2MtMC43NTA4OSwwLjIxMzQ3IC0xLjQ0MjksMC40Njc0NCAtMS45NTkwMywwLjc4Mjk4Yy0wLjIwMTY2LDAuMTEyMSAtMC40MDE4NCwwLjIyNTAyIC0wLjYwMDUsMC4zMzg2N2MtMC44MTQ2MiwwLjM5MTI1IC0xLjcxNTUyLDAuODUyMjQgLTIuNzE1NywxLjM5NjQ3Yy01LjQ1OTY3LDMuMzM3ODkgLTkuODc5MjMsNy44MjU5MyAtMTIuMzg4NzMsOS42NTMzMiMtMC41OTU0LDAuNDE5MDkgLTEuMDgwODcsMC42OTg4NyAtMS40NTE3LDAuODAwNGMtMC43MDQ4OSwwLjE1OTA5IC0wLjk3NDYsLTAuNDE0NzYgLTAuNzI4MDMsLTIuMDc2ODhjMC4yNjAzOSwtMS43NTUyOCAwLjQzODEyLC0zLjk3NzgyIDEuNTM2NCwtNi4xNjk3NWMwLjE5MzIsLTAuMzcyMjMgMC40MTM1OCwtMC43NDMyOCAwLjY2NjA3LC0xLjExMDcxYzAuMzcwNzIsLTAuNTM5NDcgMjEuMjU3NTUsLTQuODYyMjkgMjIuNTI3MjcsLTQuODMxMjhjLTAuMDc5NjMsMC4wMDk4NiAtMC4xNTkyMiwwLjAyMDE4IC0wLjIzODc2LDAuMDMwOTV6IiBmaWxsPSIjMGQxNTMxIiBzdHJva2U9IiMwMDAwMDAiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PC9nPjwvZz48L3N2Zz4=" alt="SVG Image">
+</body>
+</html>
+`,
+  "settings": `<h1>⚙️ Settings</h1><p>Future settings go here</p>`,
+  "about": `<h1>🐋 About Orca Browser</h1><p>Made with HTML, CSS & JS</p>`
+};
+
+function resolveOrcaURL(url) {
+  const page = url.replace("orca://","").trim().toLowerCase();
+  if(orcaPages[page]) return `data:text/html;charset=utf-8,${encodeURIComponent(orcaPages[page])}`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent("<h1>404 Orca Page Not Found</h1>")}`;
+}
+
+function parseURL(url) {
+  if(url.startsWith("orca://")) return resolveOrcaURL(url);
+  if(!url.startsWith("http")) return "https://"+url;
+  return url;
+}
+
+function createTab(initialUrl="orca://welcome") {
+    const id = ++tabCounter;
+    const iframe = document.createElement('iframe');
+    iframe.src = parseURL(initialUrl);
+    iframe.id = `tab-${id}`;
+    content.appendChild(iframe);
+
+    const tabButton = document.createElement('div');
+    tabButton.className = 'tab';
+    tabButton.innerHTML = `<span class="title">New Tab</span><span class="close">×</span>`;
+    tabBar.insertBefore(tabButton, newTabBtn);
+
+    const closeBtn = tabButton.querySelector('.close');
+    tabButton.addEventListener('click', e => {
+        if (e.target !== closeBtn) switchTab(id);
+    });
+    closeBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        closeTab(id);
+    });
+
+    const tabData = { 
+        id, 
+        iframe, 
+        tabButton, 
+        url: initialUrl, 
+        history: [initialUrl], 
+        historyIndex: 0 
+    };
+
+    tabs.push(tabData);
+    switchTab(id);
+
+    iframe.addEventListener('load', () => {
+        let title = "";
+        try { title = iframe.contentDocument?.title || ""; } 
+        catch (e) { title = iframe.src; }
+
+        if (iframe.src.startsWith("data:text/html")) tabButton.querySelector('.title').textContent = tabData.url;
+        else {
+            tabButton.querySelector('.title').textContent = title.slice(0,15) || iframe.src;
+            tabData.url = iframe.src;
+        }
+        if(currentTab?.id === id) urlInput.value = tabData.url;
+    });
+}
+
+function navigate(url, addToHistory=true) {
+    if (!currentTab) return;
+    const finalURL = parseURL(url);
+    currentTab.iframe.src = finalURL;
+    currentTab.url = url;
+
+    if(addToHistory){
+        // Remove forward history if we navigate anew
+        currentTab.history = currentTab.history.slice(0, currentTab.historyIndex+1);
+        currentTab.history.push(url);
+        currentTab.historyIndex++;
+    }
+    urlInput.value = url;
+}
+
+function goBack() {
+    if(!currentTab || currentTab.historyIndex <= 0) return;
+    currentTab.historyIndex--;
+    navigate(currentTab.history[currentTab.historyIndex], false);
+}
+
+function goForward() {
+    if(!currentTab || currentTab.historyIndex >= currentTab.history.length-1) return;
+    currentTab.historyIndex++;
+    navigate(currentTab.history[currentTab.historyIndex], false);
+}
+
+function switchTab(id){
+  tabs.forEach(t=>{ t.iframe.classList.remove('active'); t.tabButton.classList.remove('active'); });
+  const tab = tabs.find(t=>t.id===id);
+  if(!tab) return;
+  tab.iframe.classList.add('active');
+  tab.tabButton.classList.add('active');
+  currentTab=tab;
+  urlInput.value = tab.url;
+}
+
+function closeTab(id){
+  const idx = tabs.findIndex(t=>t.id===id);
+  if(idx===-1) return;
+  const tab = tabs[idx];
+  tab.iframe.remove();
+  tab.tabButton.remove();
+  tabs.splice(idx,1);
+  if(currentTab?.id===id){
+    if(tabs.length>0) switchTab(tabs[Math.max(0,idx-1)].id);
+    else currentTab=null,urlInput.value="";
+  }
+}
+
+urlInput.addEventListener("keydown",e=>{ if(e.key==="Enter") navigate(urlInput.value); });
+backBtn.addEventListener("click", goBack);
+forwardBtn.addEventListener("click", goForward);
+reloadBtn.addEventListener("click", () => {
+    if (!currentTab) return;
+    const url = currentTab.url;
+    const iframe = document.createElement('iframe');
+    iframe.src = parseURL(url);
+    iframe.id = currentTab.iframe.id;
+    iframe.className = 'active';
+    currentTab.iframe.replaceWith(iframe);
+    currentTab.iframe = iframe;
+
+    iframe.addEventListener('load', () => {
+        let title = "";
+        try { title = iframe.contentDocument?.title || ""; } 
+        catch (e) { title = iframe.src; }
+
+        if (iframe.src.startsWith("data:text/html")) currentTab.tabButton.querySelector('.title').textContent = currentTab.url;
+        else currentTab.tabButton.querySelector('.title').textContent = title.slice(0,15) || iframe.src;
+
+        urlInput.value = currentTab.url;
+    });
+});
+
+newTabBtn.addEventListener("click",()=>createTab("orca://welcome"));
+
+createTab("orca://welcome");
+</script>
+
+</body>
+</html>
